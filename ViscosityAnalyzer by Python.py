@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+from bokeh.plotting import figure
+from bokeh.models import HoverTool
 
 # --- Configuración de la Página y Estilo ---
 st.set_page_config(
-    page_title="Análisis de Viscosidad por Walther",
-    page_icon="📊",
+    page_title="Análisis de Viscosidad con Bokeh",
+    page_icon="🟠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -129,46 +130,65 @@ else:
         options=list(range(0, 151, 5)), max_selections=3, default=[40, 100]
     )
     
-    # --- Generación de la Gráfica Interactiva ---
-    st.header("📉 Gráfica Comparativa de Viscosidad vs. Temperatura")
+    # --- Generación de la Gráfica Interactiva con BOKEH ---
+    st.header("📉 Gráfica Comparativa de Viscosidad vs. Temperatura (con Bokeh)")
 
-    fig = go.Figure()
+    # Definir la herramienta de hover
+    hover = HoverTool(
+        tooltips=[
+            ("Lubricante", "$name"),
+            ("Temperatura", "@x{0.0}°C"),
+            ("Viscosidad", "@y{0.2f} cSt"),
+        ],
+        mode='vline' # Modo de línea vertical para comparar valores en la misma temp.
+    )
+
+    # Crear la figura de Bokeh
+    p = figure(
+        height=500,
+        sizing_mode="stretch_width",
+        tools=[hover, "pan,wheel_zoom,box_zoom,reset,save"],
+        x_axis_label="Temperatura (°C)",
+        y_axis_label="Viscosidad Cinemática (cSt)",
+        title="Comportamiento de la Viscosidad"
+    )
+
     temperaturas_grafica = np.arange(0, 151, 1)
     colores = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
 
     for i, lub in enumerate(st.session_state.lubricantes):
+        color_actual = colores[i % len(colores)]
         viscosidades = calcular_viscosidad_walther(temperaturas_grafica, lub['visc_40'], lub['visc_100'])
-        fig.add_trace(go.Scatter(
-            x=temperaturas_grafica, y=viscosidades, mode='lines', name=lub['nombre'],
-            line=dict(color=colores[i % len(colores)], width=3),
-            hovertemplate='<b>%{fullData.name}</b><br>T: %{x}°C<br>Visc: %{y:.2f} cSt<extra></extra>'
-        ))
+        
+        # Añadir la línea principal de viscosidad
+        p.line(
+            x=temperaturas_grafica, y=viscosidades, legend_label=lub['nombre'],
+            color=color_actual, line_width=3, name=lub['nombre']
+        )
 
+        # Añadir los marcadores si se seleccionaron
         if puntos_a_marcar:
             visc_puntos = [get_viscosidad_a_temp(t, lub['visc_40'], lub['visc_100']) for t in puntos_a_marcar]
-            fig.add_trace(go.Scatter(
-                x=puntos_a_marcar, y=visc_puntos, mode='markers',
-                marker=dict(size=12, color=colores[i % len(colores)], symbol='cross'),
-                name=f"Puntos de {lub['nombre']}", showlegend=False,
-                hovertemplate=f'<b>{lub["nombre"]}</b><br><b>Punto Ref.</b><br>T: %{{x}}°C<br>Visc: %{{y:.2f}} cSt<extra></extra>'
-            ))
+            p.scatter(
+                x=puntos_a_marcar, y=visc_puntos, marker='cross',
+                color=color_actual, size=12, line_width=2, name=lub['nombre']
+            )
 
-    # --- CORRECCIÓN 1: AJUSTE DINÁMICO DEL EJE Y ---
+    # Ajuste dinámico del eje Y
     lista_viscosidades_max = [get_viscosidad_a_temp(0, lub['visc_40'], lub['visc_100']) for lub in st.session_state.lubricantes]
     viscosidades_validas = [v for v in lista_viscosidades_max if pd.notna(v) and np.isfinite(v)]
-    rango_y = [0, max(viscosidades_validas) * 1.1] if viscosidades_validas else None
+    if viscosidades_validas:
+        y_max = max(viscosidades_validas) * 1.1
+        p.y_range.start = 0
+        p.y_range.end = y_max
+        
+    # Personalización de la leyenda y estilo
+    p.legend.location = "top_right"
+    p.legend.click_policy = "hide" # Permite ocultar/mostrar curvas al hacer clic
+    p.title.align = "center"
+    p.title.text_font_size = "1.2em"
 
-    fig.update_layout(
-        xaxis_title="Temperatura (°C)", yaxis_title="Viscosidad Cinemática (cSt)",
-        title=dict(text="Comportamiento de la Viscosidad", font=dict(size=20), x=0.5),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        plot_bgcolor='white',
-        xaxis=dict(gridcolor='lightgrey', type='linear', zeroline=False, fixedrange=False),
-        yaxis=dict(gridcolor='lightgrey', type='linear', zeroline=False, fixedrange=False, range=rango_y),
-        hovermode="x unified", dragmode='zoom'
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    st.bokeh_chart(p, use_container_width=True)
 
     # --- Tabla de Datos Comparativos ---
     st.header("🔢 Tabla de Datos Comparativos")
@@ -178,7 +198,6 @@ else:
         default=[0, 20, 40, 80, 100, 120]
     )
     
-    # --- CORRECCIÓN 2: LÓGICA PARA MOSTRAR LA TABLA O UN AVISO ---
     if temps_seleccionadas:
         temps_a_mostrar = sorted(list(set(temps_seleccionadas)))
         datos_tabla = {'Propiedad': [f"Viscosidad a {temp}°C (cSt)" for temp in temps_a_mostrar]}
@@ -193,4 +212,4 @@ else:
 
 # --- Pie de página ---
 st.markdown("---")
-st.write("Desarrollado con Python y Streamlit. Implementación basada en la ecuación de Walther (ASTM D341).")
+st.write("Desarrollado con Python, Streamlit y Bokeh. Implementación basada en la ecuación de Walther (ASTM D341).")
