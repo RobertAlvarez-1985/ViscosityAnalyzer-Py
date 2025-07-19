@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 from bokeh.plotting import figure
 from bokeh.models import HoverTool
-# Importante: Se importa el nuevo componente para la gráfica
 from streamlit_bokeh import streamlit_bokeh
 
 # --- Configuración de la Página y Estilo ---
@@ -50,10 +49,11 @@ def calcular_constantes_walther(visc_40, visc_100):
 
 def calcular_viscosidad_walther(temperaturas_c, visc_40, visc_100):
     if visc_40 <= 0 or visc_100 <= 0 or visc_40 <= visc_100:
-        return np.full_like(np.array(temperaturas_c), np.nan, dtype=float)
+        return np.full_like(np.array(temperaturas_c, dtype=float), np.nan)
     A, B, C = calcular_constantes_walther(visc_40, visc_100)
     if A is None:
-        return np.full_like(np.array(temperaturas_c), np.nan, dtype=float)
+        return np.full_like(np.array(temperaturas_c, dtype=float), np.nan)
+    
     temps_k = np.array(temperaturas_c) + 273.15
     viscosidades = np.full_like(temps_k, np.nan, dtype=float)
     valid_indices = temps_k > 0
@@ -141,7 +141,6 @@ else:
     p.legend.click_policy = "hide"
     p.title.align = "center"
     
-    # --- Cambio Clave: Usar streamlit_bokeh en lugar de st.bokeh_chart ---
     streamlit_bokeh(p, use_container_width=True)
 
     # --- Tabla de Datos ---
@@ -151,8 +150,15 @@ else:
         datos_tabla = {'Propiedad': [f"Viscosidad a {temp}°C (cSt)" for temp in sorted(temps_seleccionadas)]}
         for lub in st.session_state.lubricantes:
             datos_tabla[lub['nombre']] = [get_viscosidad_a_temp(temp, lub['visc_40'], lub['visc_100']) for temp in sorted(temps_seleccionadas)]
+        
         df = pd.DataFrame(datos_tabla).set_index('Propiedad')
-        st.dataframe(df.style.format("{:.2f}").background_gradient(cmap='viridis', axis=1), use_container_width=True)
+        
+        # --- AJUSTE CLAVE PARA LA TABLA ---
+        # El na_rep="-" maneja valores NaN y evita errores de formato.
+        st.dataframe(
+            df.style.format("{:.2f}", na_rep="-").background_gradient(cmap='viridis', axis=1),
+            use_container_width=True
+        )
     else:
         st.warning("Seleccione temperaturas para generar la tabla.", icon="⚠️")
 
