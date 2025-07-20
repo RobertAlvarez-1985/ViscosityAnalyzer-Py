@@ -137,7 +137,7 @@ else:
             "Ajustar Límite Eje X (Temperatura)",
             min_value=0,
             max_value=150,
-            value=150,
+            value=(0,150), # esto permite ajustar doble rango
             step=5
         )
 
