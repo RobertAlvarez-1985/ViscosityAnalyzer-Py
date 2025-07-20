@@ -69,36 +69,44 @@ def get_viscosidad_a_temp(temp_objetivo_c, visc_40, visc_100):
     viscosidad_array = calcular_viscosidad_walther([temp_objetivo_c], visc_40, visc_100)
     return viscosidad_array[0] if viscosidad_array is not None else np.nan
 
-# --- NUEVA FUNCIÓN: CÁLCULO DEL ÍNDICE DE VISCOSIDAD (ASTM D2270) ---
+# --- CORRECCIÓN: CÁLCULO DEL ÍNDICE DE VISCOSIDAD (ASTM D2270) ---
 def calcular_indice_viscosidad(kv40, kv100):
-    """Calcula el Índice de Viscosidad (IV) según la norma ASTM D2270."""
-    if kv100 is None or kv40 is None or kv100 >= kv40:
+    """
+    Calcula el Índice de Viscosidad (IV) según la norma ASTM D2270.
+    Esta versión corregida maneja adecuadamente los casos para IV <= 100 y IV > 100.
+    """
+    if kv100 is None or kv40 is None or kv100 < 2.0 or kv100 >= kv40:
         return np.nan
 
-    # Fórmulas para L y H
     Y = kv100
-    if 2 <= Y <= 70:
-        L = 10**( -1.4826 * np.log10(Y)**2 + 4.9658 * np.log10(Y) - 0.4795 )
-        H = 10**( -1.1012 * np.log10(Y)**2 + 3.8215 * np.log10(Y) - 0.4005 )
-    else:
-        # Fórmulas simplificadas para Y > 70
-        L = 0.8353 * Y**2 + 14.67 * Y - 216.2
-        H = 0.1684 * Y**2 + 11.85 * Y - 97
-    
     U = kv40
-    
-    if U > L: # Si la viscosidad es peor que un aceite de IV 0, el IV es < 0
-      return ((L - U)/(L-H)) * 100
 
-    # Cálculo del IV
-    IV = ((L - U) / (L - H)) * 100
-
-    # Fórmula para IV > 100
-    if IV > 100:
-        N = (np.log10(H) - np.log10(U)) / np.log10(Y)
+    # Determinar L y H basado en la viscosidad a 100°C (Y)
+    # Se usan las fórmulas directas del estándar en lugar de tablas de referencia.
+    if Y > 70:
+        L = 0.8353 * Y**2 + 14.67 * Y - 216
+        H = 0.1684 * Y**2 + 11.85 * Y - 97
+    else:
+        # Se usan las fórmulas logarítmicas para mayor precisión en el rango común
+        log_Y = np.log10(Y)
+        L = 10**( -1.733 * log_Y**2 + 7.621 * log_Y - 0.131 )
+        H = 10**( -1.249 * log_Y**2 + 6.357 * log_Y - 0.134 )
+        
+    # Calcular el IV preliminar
+    if U > L: # El aceite es peor que un IV de 0
+        N = (np.log10(L) - np.log10(U)) / np.log10(Y)
         IV = (10**N - 1) / 0.00715 + 100
-    
-    return IV
+        return IV
+
+    IV_preliminar = ((L - U) / (L - H)) * 100
+
+    if IV_preliminar <= 100:
+        return IV_preliminar
+    else:
+        # Fórmula específica para IV > 100
+        N = (np.log10(H) - np.log10(U)) / np.log10(Y)
+        IV_final = (10**N - 1) / 0.00715 + 100
+        return IV_final
 
 # --- Estado de la Aplicación ---
 if 'lubricantes' not in st.session_state:
@@ -110,10 +118,9 @@ with st.sidebar:
     st.header("Añadir Lubricante")
     with st.form("nuevo_lubricante_form", clear_on_submit=True):
         nombre = st.text_input("Nombre del Lubricante", placeholder="Ej: Mobil 1 5W-30")
-        visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=45.0, step=0.1, format="%.2f")
-        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=2.0, value=9.0, step=0.1, format="%.2f")
-        # MODIFICACIÓN: Se añade el campo para el Índice de Viscosidad
-        iv_declarado = st.number_input("Índice de Viscosidad (Declarado)", min_value=0, value=120, step=1)
+        visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=126.0, step=0.1, format="%.2f")
+        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=2.0, value=16.2, step=0.1, format="%.2f")
+        iv_declarado = st.number_input("Índice de Viscosidad (Declarado)", min_value=0, value=137, step=1)
         
         if st.form_submit_button("📈 Agregar Lubricante"):
             if not nombre:
@@ -149,7 +156,6 @@ st.title("📊 Analizador de Viscosidad de Lubricantes")
 if not st.session_state.lubricantes:
     st.info("Agregue al menos un lubricante en la barra lateral para comenzar.")
 else:
-    # --- Opciones y Gráfica ---
     st.subheader("⚙️ Opciones de Gráfica")
     puntos_a_marcar = st.multiselect(
         "Seleccione hasta 3 temperaturas para resaltar:",
@@ -190,7 +196,7 @@ else:
     for i, lub in enumerate(st.session_state.lubricantes):
         color_actual = colores[i % len(colores)]
         viscosidades = calcular_viscosidad_walther(temperaturas_grafica, lub['visc_40'], lub['visc_100'])
-        p.line(x=temperaturas_grafica, y=viscosidades, legend_label=lub['nombre'], color=color_actual, line_width=3, name=lub['nombre'])
+        p.line(x=temperaturas_grafica, y=viscosidades, legend_label=f"{lub['nombre']} (IV Dec: {lub['iv_declarado']})", color=color_actual, line_width=3, name=lub['nombre'])
         if puntos_a_marcar:
             visc_puntos = [get_viscosidad_a_temp(t, lub['visc_40'], lub['visc_100']) for t in puntos_a_marcar]
             p.scatter(x=puntos_a_marcar, y=visc_puntos, marker='cross', color=color_actual, size=12, line_width=2, name=lub['nombre'])
@@ -200,9 +206,8 @@ else:
     p.title.align = "center"
     streamlit_bokeh(p, use_container_width=True)
 
-    # --- Tabla de Datos ---
     st.header("🔢 Tabla de Datos Comparativos")
-    temps_seleccionadas = st.multiselect("Temperaturas para la tabla:", options=list(range(0, 151, 10)), default=[0, 40, 100, 120])
+    temps_seleccionadas = st.multiselect("Temperaturas para la tabla:", options=list(range(0, 151, 10)), default=[40, 100])
     
     if temps_seleccionadas:
         datos_tabla = {'Propiedad': [f"Viscosidad a {temp}°C (cSt)" for temp in sorted(temps_seleccionadas)]}
@@ -211,13 +216,12 @@ else:
         
         df = pd.DataFrame(datos_tabla).set_index('Propiedad')
         
-        # MODIFICACIÓN: Añadir la fila del IV calculado a la tabla
         iv_calculados = [calcular_indice_viscosidad(lub['visc_40'], lub['visc_100']) for lub in st.session_state.lubricantes]
         df.loc['Índice de Viscosidad (Calculado)'] = iv_calculados
         
         st.dataframe(
             df.style.format("{:.2f}", na_rep="-").bar(
-                subset=(df.index[:-1], list(df.columns)), # Aplicar barras solo a filas de viscosidad
+                subset=(df.index[:-1], list(df.columns)),
                 align='zero', 
                 color='#AEC6CF'
             ),
@@ -226,6 +230,5 @@ else:
     else:
         st.warning("Seleccione al menos una temperatura para generar la tabla.", icon="⚠️")
 
-# --- Pie de página ---
 st.markdown("---")
 st.write("Desarrollado con Python, Streamlit y Bokeh.")
