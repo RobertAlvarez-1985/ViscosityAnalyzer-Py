@@ -78,11 +78,11 @@ with st.sidebar:
     st.header("Añadir Lubricante")
     with st.form("nuevo_lubricante_form", clear_on_submit=True):
         nombre = st.text_input("Nombre del Lubricante", placeholder="Ej: Mobil 1 5W-30")
-        visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=45.0, step=0.1, format="%.2f")
-        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=1.0, value=9.0, step=0.1, format="%.2f")
+        visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=0.0, step=0.1, format="%.2f")
+        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=1.0, value=0.0, step=0.1, format="%.2f")
         if st.form_submit_button("📈 Agregar Lubricante"):
             if not nombre:
-                st.warning("Por favor, ingrese un nombre para el lubricante.")
+                st.warning("Ingrese nombre de lubricante:")
             elif visc_40 <= visc_100:
                 st.error("La viscosidad a 40°C debe ser mayor que a 100°C.")
             else:
@@ -101,14 +101,14 @@ with st.sidebar:
         st.rerun()
 
 # --- Área Principal ---
-st.title("📊 Analizador de Viscosidad de Lubricantes")
+st.title("📊 Analizador de Viscosidad de Lubricante(s) segun temperatura")
 if not st.session_state.lubricantes:
     st.info("Agregue al menos un lubricante para comenzar.")
 else:
     st.subheader("⚙️ Opciones de Gráfica")
     puntos_a_marcar = st.multiselect(
         "Seleccione hasta 3 temperaturas para resaltar:",
-        options=list(range(0, 151, 5)), max_selections=3, default=[40, 100]
+        options=list(range(40, 151, 10)), max_selections=5, default=[40, 100]
     )
     st.header("📉 Gráfica Comparativa de Viscosidad (con Bokeh)")
     hover = HoverTool(
@@ -145,7 +145,7 @@ else:
 
     # --- Tabla de Datos ---
     st.header("🔢 Tabla de Datos Comparativos")
-    temps_seleccionadas = st.multiselect("Temperaturas para la tabla:", options=list(range(0, 151, 10)), default=[0, 40, 100, 120])
+    temps_seleccionadas = st.multiselect("Temperaturas para la tabla:", options=list(range(0, 151, 10)), default=[40, 100])
     if temps_seleccionadas:
         datos_tabla = {'Propiedad': [f"Viscosidad a {temp}°C (cSt)" for temp in sorted(temps_seleccionadas)]}
         for lub in st.session_state.lubricantes:
@@ -155,12 +155,24 @@ else:
         
         # --- AJUSTE CLAVE PARA LA TABLA ---
         # El na_rep="-" maneja valores NaN y evita errores de formato.
-        st.dataframe(
-            df.style.format("{:.2f}", na_rep="-").background_gradient(cmap='viridis', axis=1),
-            use_container_width=True
+       # st.dataframe(
+     #       df.style.format("{:.2f}", na_rep="-").background_gradient(cmap='viridis', axis=1),
+      #      use_container_width=True
         )
-    else:
-        st.warning("Seleccione temperaturas para generar la tabla.", icon="⚠️")
+    #else:
+       # st.warning("Seleccione temperaturas para generar la tabla.", icon="⚠️")
+
+# --- AJUSTE CON BARRAS DE DATOS ---
+# El na_rep="-" maneja valores NaN y evita errores de formato.
+# Las barras de datos son una forma muy profesional de comparar valores.
+st.dataframe(
+    df.style.format("{:.2f}", na_rep="-").bar(
+        subset=[col for col in df.columns], # Aplica las barras a todas las columnas de lubricantes
+        align='zero', 
+        color='#AEC6CF' # Un color azul claro y profesional
+    ),
+    use_container_width=True
+)
 
 # --- Pie de página ---
 st.markdown("---")
