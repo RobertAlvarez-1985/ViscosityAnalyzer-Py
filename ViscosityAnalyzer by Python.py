@@ -109,7 +109,7 @@ st.title("📊 Analizador de Viscosidad de Lubricantes")
 if not st.session_state.lubricantes:
     st.info("Agregue al menos un lubricante en la barra lateral para comenzar.")
 else:
-    # --- Opciones y Gráfica ---
+    # --- Opciones de Gráfica ---
     st.subheader("⚙️ Opciones de Gráfica")
     puntos_a_marcar = st.multiselect(
         "Seleccione hasta 3 temperaturas para resaltar:",
@@ -117,8 +117,32 @@ else:
         max_selections=3,
         default=[40, 100]
     )
-    
-    st.header("📉 Gráfica Comparativa de Viscosidad (con Bokeh)")
+
+    # --- MODIFICACIÓN: SLIDERS PARA CONTROLAR EJES ---
+    # Calcular el valor máximo para el slider del eje Y
+    lista_visc_40 = [lub['visc_40'] for lub in st.session_state.lubricantes]
+    y_max_calculado = max(lista_visc_40) * 1.1 if lista_visc_40 else 100.0
+
+    col1, col2 = st.columns(2)
+    with col1:
+        y_axis_limit = st.slider(
+            "Ajustar Límite Eje Y (Viscosidad)",
+            min_value=1.0, 
+            max_value=float(y_max_calculado),
+            value=float(y_max_calculado),
+            step=1.0
+        )
+    with col2:
+        x_axis_limit = st.slider(
+            "Ajustar Límite Eje X (Temperatura)",
+            min_value=0,
+            max_value=150,
+            value=150,
+            step=5
+        )
+
+    # --- Gráfica Interactiva con Bokeh ---
+    st.header("📉 Gráfica Comparativa de Viscosidad")
     hover = HoverTool(
         tooltips=[("Lubricante", "$name"), ("Temperatura", "@x{0.0}°C"), ("Viscosidad", "@y{0.2f} cSt")],
         mode='vline'
@@ -126,8 +150,12 @@ else:
     p = figure(
         height=500, sizing_mode="stretch_width", tools=[hover, "pan,wheel_zoom,box_zoom,reset,save"],
         x_axis_label="Temperatura (°C)", y_axis_label="Viscosidad Cinemática (cSt)",
-        title="Comportamiento de la Viscosidad"
+        title="Comportamiento de la Viscosidad",
+        # Aplicar los límites de los sliders a la gráfica
+        x_range=(0, x_axis_limit),
+        y_range=(0, y_axis_limit)
     )
+    
     temperaturas_grafica = np.arange(0, 151, 1)
     colores = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
     
@@ -138,15 +166,6 @@ else:
         if puntos_a_marcar:
             visc_puntos = [get_viscosidad_a_temp(t, lub['visc_40'], lub['visc_100']) for t in puntos_a_marcar]
             p.scatter(x=puntos_a_marcar, y=visc_puntos, marker='cross', color=color_actual, size=12, line_width=2, name=lub['nombre'])
-    
-    # --- MODIFICACIÓN CLAVE: AJUSTE DEL EJE Y BASADO EN visc_40 ---
-    # Busca el valor más alto de visc_40 entre todos los lubricantes agregados.
-    lista_visc_40 = [lub['visc_40'] for lub in st.session_state.lubricantes]
-    if lista_visc_40:
-        # Establece el límite del eje Y como 1.1 veces ese valor máximo.
-        y_max = max(lista_visc_40) * 1.1
-        p.y_range.start = 0
-        p.y_range.end = y_max
     
     p.legend.location = "top_right"
     p.legend.click_policy = "hide"
