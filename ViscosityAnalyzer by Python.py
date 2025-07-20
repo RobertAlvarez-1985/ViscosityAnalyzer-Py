@@ -33,7 +33,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Funciones de Cálculo (Fórmula de Walther - ASTM D341) ---
+# --- Funciones de Cálculo ---
+
 def calcular_constantes_walther(visc_40, visc_100):
     C = 0.7
     T1_k, T2_k = 40 + 273.15, 100 + 273.15
@@ -68,6 +69,37 @@ def get_viscosidad_a_temp(temp_objetivo_c, visc_40, visc_100):
     viscosidad_array = calcular_viscosidad_walther([temp_objetivo_c], visc_40, visc_100)
     return viscosidad_array[0] if viscosidad_array is not None else np.nan
 
+# --- NUEVA FUNCIÓN: CÁLCULO DEL ÍNDICE DE VISCOSIDAD (ASTM D2270) ---
+def calcular_indice_viscosidad(kv40, kv100):
+    """Calcula el Índice de Viscosidad (IV) según la norma ASTM D2270."""
+    if kv100 is None or kv40 is None or kv100 >= kv40:
+        return np.nan
+
+    # Fórmulas para L y H
+    Y = kv100
+    if 2 <= Y <= 70:
+        L = 10**( -1.4826 * np.log10(Y)**2 + 4.9658 * np.log10(Y) - 0.4795 )
+        H = 10**( -1.1012 * np.log10(Y)**2 + 3.8215 * np.log10(Y) - 0.4005 )
+    else:
+        # Fórmulas simplificadas para Y > 70
+        L = 0.8353 * Y**2 + 14.67 * Y - 216.2
+        H = 0.1684 * Y**2 + 11.85 * Y - 97
+    
+    U = kv40
+    
+    if U > L: # Si la viscosidad es peor que un aceite de IV 0, el IV es < 0
+      return ((L - U)/(L-H)) * 100
+
+    # Cálculo del IV
+    IV = ((L - U) / (L - H)) * 100
+
+    # Fórmula para IV > 100
+    if IV > 100:
+        N = (np.log10(H) - np.log10(U)) / np.log10(Y)
+        IV = (10**N - 1) / 0.00715 + 100
+    
+    return IV
+
 # --- Estado de la Aplicación ---
 if 'lubricantes' not in st.session_state:
     st.session_state.lubricantes = []
@@ -79,7 +111,9 @@ with st.sidebar:
     with st.form("nuevo_lubricante_form", clear_on_submit=True):
         nombre = st.text_input("Nombre del Lubricante", placeholder="Ej: Mobil 1 5W-30")
         visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=45.0, step=0.1, format="%.2f")
-        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=1.0, value=9.0, step=0.1, format="%.2f")
+        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=2.0, value=9.0, step=0.1, format="%.2f")
+        # MODIFICACIÓN: Se añade el campo para el Índice de Viscosidad
+        iv_declarado = st.number_input("Índice de Viscosidad (Declarado)", min_value=0, value=120, step=1)
         
         if st.form_submit_button("📈 Agregar Lubricante"):
             if not nombre:
@@ -87,7 +121,12 @@ with st.sidebar:
             elif visc_40 <= visc_100:
                 st.error("La viscosidad a 40°C debe ser mayor que a 100°C.")
             else:
-                st.session_state.lubricantes.append({"nombre": nombre, "visc_40": visc_40, "visc_100": visc_100})
+                st.session_state.lubricantes.append({
+                    "nombre": nombre, 
+                    "visc_40": visc_40, 
+                    "visc_100": visc_100,
+                    "iv_declarado": iv_declarado
+                })
                 st.success(f"¡Lubricante '{nombre}' agregado!")
 
     st.header("📋 Lubricantes Agregados")
@@ -95,6 +134,7 @@ with st.sidebar:
         with st.expander(f"{lub['nombre']}"):
             st.write(f"Visc. 40°C: **{lub['visc_40']} cSt**")
             st.write(f"Visc. 100°C: **{lub['visc_100']} cSt**")
+            st.write(f"IV Declarado: **{lub['iv_declarado']}**")
             if st.button(f"🗑️ Eliminar '{lub['nombre']}'", key=f"del_{lub['nombre']}"):
                 st.session_state.lubricantes.remove(lub)
                 st.rerun()
@@ -109,17 +149,13 @@ st.title("📊 Analizador de Viscosidad de Lubricantes")
 if not st.session_state.lubricantes:
     st.info("Agregue al menos un lubricante en la barra lateral para comenzar.")
 else:
-    # --- Opciones de Gráfica ---
+    # --- Opciones y Gráfica ---
     st.subheader("⚙️ Opciones de Gráfica")
     puntos_a_marcar = st.multiselect(
         "Seleccione hasta 3 temperaturas para resaltar:",
-        options=list(range(0, 151, 5)), 
-        max_selections=3,
-        default=[40, 100]
+        options=list(range(0, 151, 5)), max_selections=3, default=[40, 100]
     )
-
-    # --- MODIFICACIÓN: SLIDERS DE RANGO PARA CONTROLAR EJES ---
-    # Calcular el valor máximo para el slider del eje Y
+    
     lista_visc_40 = [lub['visc_40'] for lub in st.session_state.lubricantes]
     y_max_calculado = max(lista_visc_40) * 1.1 if lista_visc_40 else 100.0
 
@@ -127,21 +163,15 @@ else:
     with col1:
         y_axis_range = st.slider(
             "Ajustar Rango Eje Y (Viscosidad)",
-            min_value=0.0, 
-            max_value=float(y_max_calculado),
-            value=(0.0, float(y_max_calculado)), # valor es una tupla para crear slider de rango
-            step=1.0
+            min_value=0.0, max_value=float(y_max_calculado),
+            value=(0.0, float(y_max_calculado)), step=1.0
         )
     with col2:
         x_axis_range = st.slider(
             "Ajustar Rango Eje X (Temperatura)",
-            min_value=0,
-            max_value=150,
-            value=(0, 150), # valor es una tupla para crear slider de rango
-            step=5
+            min_value=0, max_value=150, value=(0, 150), step=5
         )
 
-    # --- Gráfica Interactiva con Bokeh ---
     st.header("📉 Gráfica Comparativa de Viscosidad")
     hover = HoverTool(
         tooltips=[("Lubricante", "$name"), ("Temperatura", "@x{0.0}°C"), ("Viscosidad", "@y{0.2f} cSt")],
@@ -151,9 +181,7 @@ else:
         height=500, sizing_mode="stretch_width", tools=[hover, "pan,wheel_zoom,box_zoom,reset,save"],
         x_axis_label="Temperatura (°C)", y_axis_label="Viscosidad Cinemática (cSt)",
         title="Comportamiento de la Viscosidad",
-        # Aplicar los rangos de los sliders a la gráfica
-        x_range=x_axis_range,
-        y_range=y_axis_range
+        x_range=x_axis_range, y_range=y_axis_range
     )
     
     temperaturas_grafica = np.arange(0, 151, 1)
@@ -170,7 +198,6 @@ else:
     p.legend.location = "top_right"
     p.legend.click_policy = "hide"
     p.title.align = "center"
-    
     streamlit_bokeh(p, use_container_width=True)
 
     # --- Tabla de Datos ---
@@ -184,9 +211,13 @@ else:
         
         df = pd.DataFrame(datos_tabla).set_index('Propiedad')
         
+        # MODIFICACIÓN: Añadir la fila del IV calculado a la tabla
+        iv_calculados = [calcular_indice_viscosidad(lub['visc_40'], lub['visc_100']) for lub in st.session_state.lubricantes]
+        df.loc['Índice de Viscosidad (Calculado)'] = iv_calculados
+        
         st.dataframe(
             df.style.format("{:.2f}", na_rep="-").bar(
-                subset=list(df.columns),
+                subset=(df.index[:-1], list(df.columns)), # Aplicar barras solo a filas de viscosidad
                 align='zero', 
                 color='#AEC6CF'
             ),
