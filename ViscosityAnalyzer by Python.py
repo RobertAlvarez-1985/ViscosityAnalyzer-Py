@@ -158,7 +158,7 @@ else:
        # st.dataframe(
      #       df.style.format("{:.2f}", na_rep="-").background_gradient(cmap='viridis', axis=1),
       #      use_container_width=True
-        )
+       # )
     #else:
        # st.warning("Seleccione temperaturas para generar la tabla.", icon="⚠️")
 
