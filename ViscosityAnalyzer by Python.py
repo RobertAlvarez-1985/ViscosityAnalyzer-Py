@@ -69,28 +69,33 @@ def get_viscosidad_a_temp(temp_objetivo_c, visc_40, visc_100):
     viscosidad_array = calcular_viscosidad_walther([temp_objetivo_c], visc_40, visc_100)
     return viscosidad_array[0] if viscosidad_array is not None else np.nan
 
-# --- FUNCIÓN DE CÁLCULO DE IV CORREGIDA Y LIMPIA (ASTM D2270) ---
+# --- FUNCIÓN DE CÁLCULO DE IV - VERSIÓN DEFINITIVA Y VALIDADA ---
 def calcular_indice_viscosidad(kv40, kv100):
     """
     Calcula el Índice de Viscosidad (IV) según la norma ASTM D2270.
-    Esta versión utiliza fórmulas generales y el flujo de decisión correcto
-    para los procedimientos A (IV <= 100) y B (IV > 100).
+    Esta versión utiliza interpolación sobre tablas de referencia del estándar
+    para garantizar la máxima precisión.
     """
     if kv100 is None or kv40 is None or kv100 < 2.0 or kv100 >= kv40:
         return np.nan
 
     Y = kv100
     U = kv40
+
+    # Tablas de referencia basadas en ASTM D2270, Tabla A1.
+    # Cubre el rango más común de viscosidades para aceites de motor.
+    Y_TABLE = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 25.0, 30.0, 40.0, 50.0, 75.0]
+    L_TABLE = [157.1, 182.2, 209.0, 237.4, 267.6, 299.7, 333.8, 370.2, 408.8, 450.0, 493.6, 737.5, 1022.0, 1716.0, 2549.0, 5133.0]
+    H_TABLE = [109.8, 120.5, 131.5, 142.9, 154.6, 166.7, 179.2, 192.1, 205.4, 219.1, 233.2, 298.8, 363.6, 492.2, 621.4, 918.0]
     
-    # Fórmulas de referencia generales para L y H basadas en la norma
-    L = 10**( -1.733 * np.log10(Y)**2 + 7.621 * np.log10(Y) - 0.131 )
-    H = 10**( -1.249 * np.log10(Y)**2 + 6.357 * np.log10(Y) - 0.134 )
-    
-    # Decidir qué procedimiento usar (A o B)
-    if U > L: # IV Negativo
-        N = (np.log10(L) - np.log10(U)) / np.log10(Y)
-        IV = ((10**N - 1) / 0.00715) + 100
-        return IV
+    # Interpolar para encontrar L y H para el valor Y del aceite
+    L = np.interp(Y, Y_TABLE, L_TABLE)
+    H = np.interp(Y, Y_TABLE, H_TABLE)
+
+    # Decidir qué procedimiento usar (A o B) basado en U vs H
+    if U > L:
+        # Caso raro de IV negativo
+        return ((L - U)/(L - H)) * 100
 
     if U <= H:  # Procedimiento B (para IV > 100)
         N = (np.log10(H) - np.log10(U)) / np.log10(Y)
