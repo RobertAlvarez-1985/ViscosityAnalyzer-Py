@@ -72,44 +72,52 @@ def get_viscosidad_a_temp(temp_objetivo_c, visc_40, visc_100):
 if 'lubricantes' not in st.session_state:
     st.session_state.lubricantes = []
 
-# --- Barra Lateral ---
+# --- Barra Lateral (Sidebar) ---
 with st.sidebar:
     st.title("🔧 Controles")
     st.header("Añadir Lubricante")
     with st.form("nuevo_lubricante_form", clear_on_submit=True):
         nombre = st.text_input("Nombre del Lubricante", placeholder="Ej: Mobil 1 5W-30")
-        visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=0.0, step=0.1, format="%.2f")
-        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=1.0, value=0.0, step=0.1, format="%.2f")
+        visc_40 = st.number_input("Viscosidad a 40°C (cSt)", min_value=1.0, value=45.0, step=0.1, format="%.2f")
+        visc_100 = st.number_input("Viscosidad a 100°C (cSt)", min_value=1.0, value=9.0, step=0.1, format="%.2f")
+        
         if st.form_submit_button("📈 Agregar Lubricante"):
             if not nombre:
-                st.warning("Ingrese nombre de lubricante:")
+                st.warning("Por favor, ingrese un nombre para el lubricante.")
             elif visc_40 <= visc_100:
                 st.error("La viscosidad a 40°C debe ser mayor que a 100°C.")
             else:
                 st.session_state.lubricantes.append({"nombre": nombre, "visc_40": visc_40, "visc_100": visc_100})
                 st.success(f"¡Lubricante '{nombre}' agregado!")
+
     st.header("📋 Lubricantes Agregados")
-    for i, lub in enumerate(st.session_state.lubricantes):
+    for lub in st.session_state.lubricantes[:]:
         with st.expander(f"{lub['nombre']}"):
             st.write(f"Visc. 40°C: **{lub['visc_40']} cSt**")
             st.write(f"Visc. 100°C: **{lub['visc_100']} cSt**")
-            if st.button(f"🗑️ Eliminar '{lub['nombre']}'", key=f"del_{i}"):
-                st.session_state.lubricantes.pop(i)
+            if st.button(f"🗑️ Eliminar '{lub['nombre']}'", key=f"del_{lub['nombre']}"):
+                st.session_state.lubricantes.remove(lub)
                 st.rerun()
+
     if st.session_state.lubricantes and st.button("🗑️ Limpiar Todo", use_container_width=True):
         st.session_state.lubricantes = []
         st.rerun()
 
 # --- Área Principal ---
-st.title("📊 Analizador de Viscosidad de Lubricante(s) segun temperatura")
+st.title("📊 Analizador de Viscosidad de Lubricantes")
+
 if not st.session_state.lubricantes:
-    st.info("Agregue al menos un lubricante para comenzar.")
+    st.info("Agregue al menos un lubricante en la barra lateral para comenzar.")
 else:
+    # --- Opciones y Gráfica ---
     st.subheader("⚙️ Opciones de Gráfica")
     puntos_a_marcar = st.multiselect(
         "Seleccione hasta 3 temperaturas para resaltar:",
-        options=list(range(40, 151, 10)), max_selections=5, default=[40, 100]
+        options=list(range(0, 151, 5)), 
+        max_selections=3,
+        default=[40, 100]
     )
+    
     st.header("📉 Gráfica Comparativa de Viscosidad (con Bokeh)")
     hover = HoverTool(
         tooltips=[("Lubricante", "$name"), ("Temperatura", "@x{0.0}°C"), ("Viscosidad", "@y{0.2f} cSt")],
@@ -122,6 +130,7 @@ else:
     )
     temperaturas_grafica = np.arange(0, 151, 1)
     colores = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    
     for i, lub in enumerate(st.session_state.lubricantes):
         color_actual = colores[i % len(colores)]
         viscosidades = calcular_viscosidad_walther(temperaturas_grafica, lub['visc_40'], lub['visc_100'])
@@ -130,10 +139,12 @@ else:
             visc_puntos = [get_viscosidad_a_temp(t, lub['visc_40'], lub['visc_100']) for t in puntos_a_marcar]
             p.scatter(x=puntos_a_marcar, y=visc_puntos, marker='cross', color=color_actual, size=12, line_width=2, name=lub['nombre'])
     
-    lista_viscosidades_max = [get_viscosidad_a_temp(0, lub['visc_40'], lub['visc_100']) for lub in st.session_state.lubricantes]
-    viscosidades_validas = [v for v in lista_viscosidades_max if pd.notna(v) and np.isfinite(v)]
-    if viscosidades_validas:
-        y_max = max(viscosidades_validas) * 1.1
+    # --- MODIFICACIÓN CLAVE: AJUSTE DEL EJE Y BASADO EN visc_40 ---
+    # Busca el valor más alto de visc_40 entre todos los lubricantes agregados.
+    lista_visc_40 = [lub['visc_40'] for lub in st.session_state.lubricantes]
+    if lista_visc_40:
+        # Establece el límite del eje Y como 1.1 veces ese valor máximo.
+        y_max = max(lista_visc_40) * 1.1
         p.y_range.start = 0
         p.y_range.end = y_max
     
@@ -145,7 +156,8 @@ else:
 
     # --- Tabla de Datos ---
     st.header("🔢 Tabla de Datos Comparativos")
-    temps_seleccionadas = st.multiselect("Temperaturas para la tabla:", options=list(range(0, 151, 10)), default=[40, 100])
+    temps_seleccionadas = st.multiselect("Temperaturas para la tabla:", options=list(range(0, 151, 10)), default=[0, 40, 100, 120])
+    
     if temps_seleccionadas:
         datos_tabla = {'Propiedad': [f"Viscosidad a {temp}°C (cSt)" for temp in sorted(temps_seleccionadas)]}
         for lub in st.session_state.lubricantes:
@@ -153,26 +165,16 @@ else:
         
         df = pd.DataFrame(datos_tabla).set_index('Propiedad')
         
-        # --- AJUSTE CLAVE PARA LA TABLA ---
-        # El na_rep="-" maneja valores NaN y evita errores de formato.
-       # st.dataframe(
-     #       df.style.format("{:.2f}", na_rep="-").background_gradient(cmap='viridis', axis=1),
-      #      use_container_width=True
-       # )
-    #else:
-       # st.warning("Seleccione temperaturas para generar la tabla.", icon="⚠️")
-
-# --- AJUSTE CON BARRAS DE DATOS ---
-# El na_rep="-" maneja valores NaN y evita errores de formato.
-# Las barras de datos son una forma muy profesional de comparar valores.
-st.dataframe(
-    df.style.format("{:.2f}", na_rep="-").bar(
-        subset=[col for col in df.columns], # Aplica las barras a todas las columnas de lubricantes
-        align='zero', 
-        color='#AEC6CF' # Un color azul claro y profesional
-    ),
-    use_container_width=True
-)
+        st.dataframe(
+            df.style.format("{:.2f}", na_rep="-").bar(
+                subset=list(df.columns),
+                align='zero', 
+                color='#AEC6CF'
+            ),
+            use_container_width=True
+        )
+    else:
+        st.warning("Seleccione al menos una temperatura para generar la tabla.", icon="⚠️")
 
 # --- Pie de página ---
 st.markdown("---")
