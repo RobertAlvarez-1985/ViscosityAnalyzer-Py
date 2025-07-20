@@ -118,26 +118,26 @@ else:
         default=[40, 100]
     )
 
-    # --- MODIFICACIÓN: SLIDERS PARA CONTROLAR EJES ---
+    # --- MODIFICACIÓN: SLIDERS DE RANGO PARA CONTROLAR EJES ---
     # Calcular el valor máximo para el slider del eje Y
     lista_visc_40 = [lub['visc_40'] for lub in st.session_state.lubricantes]
     y_max_calculado = max(lista_visc_40) * 1.1 if lista_visc_40 else 100.0
 
     col1, col2 = st.columns(2)
     with col1:
-        y_axis_limit = st.slider(
-            "Ajustar Límite Eje Y (Viscosidad)",
-            min_value=1.0, 
+        y_axis_range = st.slider(
+            "Ajustar Rango Eje Y (Viscosidad)",
+            min_value=0.0, 
             max_value=float(y_max_calculado),
-            value=float(y_max_calculado),
+            value=(0.0, float(y_max_calculado)), # valor es una tupla para crear slider de rango
             step=1.0
         )
     with col2:
-        x_axis_limit = st.slider(
-            "Ajustar Límite Eje X (Temperatura)",
+        x_axis_range = st.slider(
+            "Ajustar Rango Eje X (Temperatura)",
             min_value=0,
             max_value=150,
-            value=(0,150), # esto permite ajustar doble rango
+            value=(0, 150), # valor es una tupla para crear slider de rango
             step=5
         )
 
@@ -151,9 +151,9 @@ else:
         height=500, sizing_mode="stretch_width", tools=[hover, "pan,wheel_zoom,box_zoom,reset,save"],
         x_axis_label="Temperatura (°C)", y_axis_label="Viscosidad Cinemática (cSt)",
         title="Comportamiento de la Viscosidad",
-        # Aplicar los límites de los sliders a la gráfica
-        x_range=(0, x_axis_limit),
-        y_range=(0, y_axis_limit)
+        # Aplicar los rangos de los sliders a la gráfica
+        x_range=x_axis_range,
+        y_range=y_axis_range
     )
     
     temperaturas_grafica = np.arange(0, 151, 1)
