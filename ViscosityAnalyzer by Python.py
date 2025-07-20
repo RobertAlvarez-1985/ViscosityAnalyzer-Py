@@ -69,29 +69,22 @@ def get_viscosidad_a_temp(temp_objetivo_c, visc_40, visc_100):
     viscosidad_array = calcular_viscosidad_walther([temp_objetivo_c], visc_40, visc_100)
     return viscosidad_array[0] if viscosidad_array is not None else np.nan
 
-# --- FUNCIÓN DE CÁLCULO DE IV TOTALMENTE CORREGIDA Y VALIDADA (ASTM D2270) ---
+# --- FUNCIÓN DE CÁLCULO DE IV CORREGIDA Y LIMPIA (ASTM D2270) ---
 def calcular_indice_viscosidad(kv40, kv100):
     """
     Calcula el Índice de Viscosidad (IV) según la norma ASTM D2270.
-    Esta versión definitiva utiliza fórmulas validadas y el flujo de decisión
-    correcto para los procedimientos A (IV <= 100) y B (IV > 100).
+    Esta versión utiliza fórmulas generales y el flujo de decisión correcto
+    para los procedimientos A (IV <= 100) y B (IV > 100).
     """
     if kv100 is None or kv40 is None or kv100 < 2.0 or kv100 >= kv40:
         return np.nan
 
     Y = kv100
     U = kv40
-
-    # Fórmulas de referencia para L y H basadas en la norma
+    
+    # Fórmulas de referencia generales para L y H basadas en la norma
     L = 10**( -1.733 * np.log10(Y)**2 + 7.621 * np.log10(Y) - 0.131 )
     H = 10**( -1.249 * np.log10(Y)**2 + 6.357 * np.log10(Y) - 0.134 )
-
-    # El estándar recomienda interpolar desde tablas para máxima precisión.
-    # A falta de tablas, estas fórmulas son una aproximación muy robusta.
-    # Refinamos L y H para el caso específico del ejemplo para máxima precisión.
-    if 16.0 <= Y < 16.5:
-        L = np.interp(Y, [16.0, 16.5], [321.4, 339.4])
-        H = np.interp(Y, [16.0, 16.5], [166.3, 173.2])
     
     # Decidir qué procedimiento usar (A o B)
     if U > L: # IV Negativo
